@@ -95,6 +95,10 @@
   }
   .warn .wt{font-size:14px;font-weight:700;color:var(--red);margin-bottom:4px;}
   .warn .wb{font-size:13px;color:#6b3a33;line-height:1.5;}
+  .rate-warn{
+    margin-top:-4px;margin-bottom:14px;padding:10px 14px;border-radius:8px;
+    background:#fff8e6;border:1.5px solid #e8d590;font-size:13px;color:#8a6d1b;line-height:1.45;
+  }
   .hide{display:none;}
 
   /* Advanced toggle */
@@ -156,6 +160,7 @@
         <option value="fha">FHA</option>
       </select>
     </div>
+    <div class="rate-warn hide" id="rateWarn">&#9888; That rate looks too high. Did you mean <strong id="rateGuess"></strong>%? Interest rates are usually between 3% and 12%.</div>
   </div>
 
   <!-- Verdict -->
@@ -289,6 +294,20 @@
         recast=num("recast"),term=num("term");
 
     if(price<=0){return;}
+
+    // Rate sanity check
+    var rw=$("rateWarn"),rg=$("rateGuess");
+    if(rate>15){
+      // Likely missing a decimal — guess what they meant
+      var guess=rate;
+      if(rate>100){guess=rate/100;}
+      else{guess=rate/10;}
+      guess=Math.round(guess*100)/100;
+      rg.textContent=guess;
+      rw.className="rate-warn";
+    } else {
+      rw.className="rate-warn hide";
+    }
 
     // Plan A
     var downA=price*downPct;
