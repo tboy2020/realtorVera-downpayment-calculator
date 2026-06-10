@@ -101,6 +101,24 @@
   }
   .hide{display:none;}
 
+  /* Share & PDF buttons */
+  .actions{display:flex;gap:10px;margin-top:18px;}
+  .actions button{
+    flex:1;padding:13px 10px;border-radius:8px;font-size:14px;font-weight:600;
+    cursor:pointer;border:none;display:flex;align-items:center;justify-content:center;gap:6px;
+  }
+  .btn-share{background:var(--ink);color:#fff;}
+  .btn-share:active{background:#1c3a52;}
+  .btn-pdf{background:var(--gold);color:#fff;}
+  .btn-pdf:active{background:#9a7422;}
+  .toast{
+    position:fixed;bottom:30px;left:50%;transform:translateX(-50%);
+    background:var(--ink);color:#fff;padding:10px 20px;border-radius:20px;
+    font-size:14px;font-weight:600;opacity:0;transition:opacity .3s;
+    pointer-events:none;z-index:999;
+  }
+  .toast.show{opacity:1;}
+
   /* Advanced toggle */
   .adv-toggle{
     margin-top:18px;text-align:center;
@@ -117,6 +135,29 @@
   /* Footer */
   .foot{margin-top:28px;text-align:center;font-size:12px;color:var(--muted);line-height:1.6;padding:0 8px;}
   .scripture{font-style:italic;color:#5a6a76;font-size:13.5px;margin-bottom:6px;}
+  .brand{font-size:11px;color:var(--gold);font-weight:600;margin-top:6px;}
+
+  /* Print / PDF styles */
+  @media print{
+    body{background:#fff !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    .hdr{padding:20px 16px 16px;}
+    .inputs,.adv-toggle,.adv,.actions,.toast,.rate-warn{display:none !important;}
+    .wrap{max-width:100%;padding:0 16px 20px;}
+    .verdict{margin-top:12px;}
+    .cards{grid-template-columns:1fr 1fr !important;gap:10px;}
+    .card{break-inside:avoid;}
+    .foot{margin-top:16px;}
+    .print-params{display:block !important;}
+  }
+  .print-params{
+    display:none;margin-top:12px;padding:14px 16px;background:var(--white);
+    border:1.5px solid var(--line);border-radius:10px;font-size:13px;
+  }
+  .print-params .pp-title{font-weight:700;font-size:14px;margin-bottom:8px;}
+  .print-params .pp-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #eee8da;}
+  .print-params .pp-row:last-child{border-bottom:none;}
+  .print-params .pp-k{color:var(--muted);}
+  .print-params .pp-v{font-weight:600;}
 </style>
 </head>
 <body>
@@ -201,6 +242,15 @@
     </div>
   </div>
 
+  <!-- Print-only parameters block -->
+  <div class="print-params" id="printParams"></div>
+
+  <!-- Share & PDF buttons -->
+  <div class="actions">
+    <button class="btn-share" id="shareBtn" type="button">&#128279; Share link</button>
+    <button class="btn-pdf" id="pdfBtn" type="button">&#128196; Save as PDF</button>
+  </div>
+
   <!-- Advanced -->
   <div class="adv-toggle"><button id="advBtn" type="button">&#9881; Advanced settings</button></div>
   <div class="adv hide" id="advPanel">
@@ -233,26 +283,73 @@
   <div class="foot">
     <div class="scripture">&ldquo;The plans of the diligent lead surely to abundance.&rdquo; &mdash; Proverbs 21:5 (KJV)</div>
     <p>This is an educational estimate, not financial advice. Plan A assumes a recast and PMI cancellation request after the extra payment. Confirm details with the lender.</p>
+    <div class="brand">Prepared by Vera Adegoke &middot; Red 1 Realty &middot; Columbus OH</div>
   </div>
 
 </div>
+
+<div class="toast" id="toast"></div>
 
 <script>
 (function(){
   "use strict";
 
   var DEFAULTS = {price:400000,rate:6.75,downPct:5,lump:60000,months:3,loanType:"conv",pmiRate:0.5,fhaMip:0.55,fhaUp:1.75,recast:250,term:30};
-  var KEY = "dpCompare_v2";
+  var KEY = "dpCompare_v3";
   var ids = ["price","rate","downPct","lump","months","loanType","pmiRate","fhaMip","fhaUp","recast","term"];
 
   function $(id){return document.getElementById(id);}
   function num(id){var v=parseFloat($(id).value);return isNaN(v)?0:v;}
   function fmt(n){return "$"+Math.round(n).toLocaleString("en-US");}
 
-  function load(){
-    var s={};try{var r=localStorage.getItem(KEY);if(r)s=JSON.parse(r);}catch(e){}
-    for(var i=0;i<ids.length;i++){var id=ids[i];$(id).value=(s[id]!==undefined&&s[id]!=="")? s[id]:DEFAULTS[id];}
+  /* --- URL params (share link) --- */
+  function getUrlParams(){
+    var p={};
+    var search=window.location.search.replace("?","");
+    if(!search)return p;
+    var pairs=search.split("&");
+    for(var i=0;i<pairs.length;i++){
+      var kv=pairs[i].split("=");
+      if(kv.length===2) p[decodeURIComponent(kv[0])]=decodeURIComponent(kv[1]);
+    }
+    return p;
   }
+
+  function buildShareUrl(){
+    var base=window.location.origin+window.location.pathname;
+    var parts=[];
+    for(var i=0;i<ids.length;i++){
+      var id=ids[i];
+      var val=$(id).value;
+      if(val!==undefined&&val!=="") parts.push(encodeURIComponent(id)+"="+encodeURIComponent(val));
+    }
+    return base+"?"+parts.join("&");
+  }
+
+  /* --- Toast --- */
+  function showToast(msg){
+    var t=$("toast");
+    t.textContent=msg;
+    t.className="toast show";
+    setTimeout(function(){t.className="toast";},2200);
+  }
+
+  /* --- Load: URL params > localStorage > defaults --- */
+  function load(){
+    var url=getUrlParams();
+    var hasUrl=Object.keys(url).length>0;
+    var saved={};
+    try{var r=localStorage.getItem(KEY);if(r)saved=JSON.parse(r);}catch(e){}
+    for(var i=0;i<ids.length;i++){
+      var id=ids[i];
+      var val;
+      if(hasUrl&&url[id]!==undefined){val=url[id];}
+      else if(saved[id]!==undefined&&saved[id]!==""){val=saved[id];}
+      else{val=DEFAULTS[id];}
+      $(id).value=val;
+    }
+  }
+
   function save(){
     var o={};for(var i=0;i<ids.length;i++){o[ids[i]]=$(ids[i]).value;}
     try{localStorage.setItem(KEY,JSON.stringify(o));}catch(e){}
@@ -286,6 +383,22 @@
     return{initPay:initPay,afterPay:afterPay,totInt:totInt,totIns:totIns};
   }
 
+  /* --- Print params block (shown only in PDF) --- */
+  function updatePrintParams(){
+    var price=num("price"),rate=num("rate"),downPct=num("downPct"),
+        lump=num("lump"),months=Math.round(num("months")),
+        loanType=$("loanType").value==="fha"?"FHA":"Conventional",
+        term=num("term");
+    var html='<div class="pp-title">Deal parameters</div>';
+    html+='<div class="pp-row"><span class="pp-k">Home price</span><span class="pp-v">'+fmt(price)+'</span></div>';
+    html+='<div class="pp-row"><span class="pp-k">Interest rate</span><span class="pp-v">'+rate+'%</span></div>';
+    html+='<div class="pp-row"><span class="pp-k">Starting down payment</span><span class="pp-v">'+downPct+'%</span></div>';
+    html+='<div class="pp-row"><span class="pp-k">Extra payment</span><span class="pp-v">'+fmt(lump)+' at month '+months+'</span></div>';
+    html+='<div class="pp-row"><span class="pp-k">Loan type</span><span class="pp-v">'+loanType+'</span></div>';
+    html+='<div class="pp-row"><span class="pp-k">Term</span><span class="pp-v">'+term+' years</span></div>';
+    $("printParams").innerHTML=html;
+  }
+
   function compute(){
     var price=num("price"),rate=num("rate"),downPct=num("downPct")/100,
         lump=num("lump"),months=Math.round(num("months")),
@@ -298,7 +411,6 @@
     // Rate sanity check
     var rw=$("rateWarn"),rg=$("rateGuess");
     if(rate>15){
-      // Likely missing a decimal — guess what they meant
       var guess=rate;
       if(rate>100){guess=rate/100;}
       else{guess=rate/10;}
@@ -338,7 +450,7 @@
 
     $("payB").textContent=fmt(B.initPay);
     $("cashB").textContent=fmt(downB);
-    $("lumpB").textContent="—";
+    $("lumpB").textContent="\u2014";
     $("totalCashB").textContent=fmt(downB);
     $("insB").textContent="$0";
     $("intB").textContent=fmt(B.totInt);
@@ -358,39 +470,37 @@
     var vd=$("verdict"),vt=$("vTitle"),ve=$("vExplain"),vs=$("vSaving"),vem=$("vEmoji");
 
     if(diff>threshold){
-      // Plan B wins
       vd.className="verdict b";
       vem.textContent="\u2705";
       vt.textContent="Putting 20% down upfront is the better deal.";
       if(isFha){
         ve.textContent="With FHA, the mortgage insurance stays for the entire loan. That alone costs "+fmt(A.totIns)+" over "+term+" years. Going conventional with 20% down avoids it entirely.";
       } else {
-        ve.textContent="She saves "+fmt(diff)+" over "+term+" years by avoiding mortgage insurance and the higher early balance. The monthly payments end up nearly identical either way — so unless she truly needs that cash during the build, 20% down is cleaner.";
+        ve.textContent="You save "+fmt(diff)+" over "+term+" years by avoiding mortgage insurance and the higher early balance. The monthly payments end up nearly identical either way \u2014 so unless you truly need that cash during the build, 20% down is cleaner.";
       }
       vs.textContent="Saves "+fmt(diff)+" with 20% down";
       vs.className="saving green";
       cardB.className="card winner";
       var b1=document.createElement("div");b1.className="badge";b1.textContent="BETTER";cardB.appendChild(b1);
     } else if(diff<-threshold){
-      // Plan A wins
       vd.className="verdict a";
       vem.textContent="\ud83d\udca1";
       vt.textContent="Paying less now and adding the extra payment later comes out ahead.";
-      ve.textContent="She keeps "+fmt(lump)+" available during the build and still lands at the same balance after the extra payment. The small extra cost is worth the flexibility.";
+      ve.textContent="You keep "+fmt(lump)+" available during the build and still land at the same balance after the extra payment. The small extra cost is worth the flexibility.";
       vs.textContent="Saves "+fmt(Math.abs(diff))+" with Plan A";
       vs.className="saving green";
       cardA.className="card winner";
       var b2=document.createElement("div");b2.className="badge";b2.textContent="BETTER";cardA.appendChild(b2);
     } else {
-      // Wash
       vd.className="verdict tie";
       vem.textContent="\u2696\ufe0f";
-      vt.textContent="It's basically a wash — decide based on cash needs.";
-      ve.textContent="The cost difference is only "+fmt(Math.abs(diff))+". If she wants that "+fmt(lump)+" available during the build for upgrades, moving costs, or unexpected expenses, Plan A makes sense. If the cash is just sitting there, 20% down is simpler.";
+      vt.textContent="It\u2019s basically a wash \u2014 decide based on cash needs.";
+      ve.textContent="The cost difference is only "+fmt(Math.abs(diff))+". If you want that "+fmt(lump)+" available during the build for upgrades, moving costs, or unexpected expenses, Plan A makes sense. If the cash is just sitting there, 20% down is simpler.";
       vs.textContent="Difference: "+fmt(Math.abs(diff));
       vs.className="saving neutral";
     }
 
+    updatePrintParams();
     save();
   }
 
@@ -406,7 +516,38 @@
       if(p.className.indexOf("hide")>=0){p.className="adv";this.textContent="\u2716 Hide advanced";}
       else{p.className="adv hide";this.textContent="\u2699 Advanced settings";}
     });
+
+    // Share button
+    $("shareBtn").addEventListener("click",function(){
+      var url=buildShareUrl();
+      if(navigator.share){
+        navigator.share({title:"Down Payment Comparison",url:url}).catch(function(){});
+      } else if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(url).then(function(){
+          showToast("Link copied!");
+        }).catch(function(){
+          fallbackCopy(url);
+        });
+      } else {
+        fallbackCopy(url);
+      }
+    });
+
+    // PDF button
+    $("pdfBtn").addEventListener("click",function(){
+      window.print();
+    });
+
     compute();
+  }
+
+  function fallbackCopy(text){
+    var ta=document.createElement("textarea");
+    ta.value=text;ta.style.position="fixed";ta.style.left="-9999px";
+    document.body.appendChild(ta);ta.select();
+    try{document.execCommand("copy");showToast("Link copied!");}
+    catch(e){showToast("Copy the URL from your address bar");}
+    document.body.removeChild(ta);
   }
 
   if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",init);}
